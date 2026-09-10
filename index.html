@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>3D Animated Site</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #05060a;
+    color: #fff;
+    font-family: system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+  }
+  #hero {
+    position: relative;
+    height: 100vh;
+    width: 100%;
+  }
+  canvas { display: block; }
+  .overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .overlay h1 {
+    font-size: clamp(2rem, 6vw, 4.5rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    background: linear-gradient(90deg, #6ee7ff, #a78bfa, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .overlay p {
+    margin-top: 1rem;
+    font-size: clamp(0.9rem, 2vw, 1.2rem);
+    color: #94a3b8;
+  }
+  section {
+    padding: 6rem 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  section h2 { font-size: 2rem; margin-bottom: 1rem; }
+  section p { color: #94a3b8; line-height: 1.7; }
+</style>
+</head>
+<body>
+
+<div id="hero">
+  <div class="overlay">
+    <h1>Interactive 3D</h1>
+    <p>Move your mouse · Scroll to explore</p>
+  </div>
+</div>
+
+<section>
+  <h2>Built with Three.js</h2>
+  <p>This scene renders in real time using WebGL. The particles react to your cursor, and the camera drifts as you scroll. Everything here is a single HTML file — no frameworks, no build step.</p>
+</section>
+
+<section>
+  <h2>What you can add next</h2>
+  <p>Product models, animated logos, scroll-driven camera paths, physics, or a GLTF character. The same setup scales from a hero banner to a full 3D experience.</p>
+</section>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+const hero = document.getElementById('hero');
+
+// --- Scene setup ---
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x05060a, 0.035);
+
+const camera = new THREE.PerspectiveCamera(
+  60,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  100
+);
+camera.position.z = 12;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+hero.appendChild(renderer.domElement);
+
+// --- Lights ---
+scene.add(new THREE.AmbientLight(0x404060, 1.2));
+const point = new THREE.PointLight(0x6ee7ff, 60, 40);
+point.position.set(5, 5, 5);
+scene.add(point);
+const point2 = new THREE.PointLight(0xf472b6, 50, 40);
+point2.position.set(-5, -3, 4);
+scene.add(point2);
+
+// --- Central animated object ---
+const geo = new THREE.IcosahedronGeometry(2.4, 1);
+const mat = new THREE.MeshStandardMaterial({
+  color: 0x1a1a2e,
+  emissive: 0x2a1a5e,
+  emissiveIntensity: 0.6,
+  metalness: 0.9,
+  roughness: 0.15,
+  flatShading: true,
+});
+const core = new THREE.Mesh(geo, mat);
+scene.add(core);
+
+// wireframe shell around it
+const shell = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(3.2, 1),
+  new THREE.MeshBasicMaterial({ color: 0x6ee7ff, wireframe: true, transparent: true, opacity: 0.25 })
+);
+scene.add(shell);
+
+// --- Particle field ---
+const COUNT = 1200;
+const positions = new Float32Array(COUNT * 3);
+const velocities = [];
+for (let i = 0; i < COUNT; i++) {
+  positions[i * 3]     = (Math.random() - 0.5) * 40;
+  positions[i * 3 + 1] = (Math.random() - 0.5) * 40;
+  positions[i * 3 + 2] = (Math.random() - 0.5) * 40;
+  velocities.push(new THREE.Vector3(
+    (Math.random() - 0.5) * 0.01,
+    (Math.random() - 0.5) * 0.01,
+    (Math.random() - 0.5) * 0.01
+  ));
+}
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+const pMat = new THREE.PointsMaterial({
+  color: 0xa78bfa,
+  size: 0.08,
+  transparent: true,
+  opacity: 0.8,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const particles = new THREE.Points(pGeo, pMat);
+scene.add(particles);
+
+// --- Mouse interaction ---
+const mouse = { x: 0, y: 0 };
+window.addEventListener('mousemove', (e) => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
+
+// --- Scroll interaction ---
+let scrollY = 0;
+window.addEventListener('scroll', () => { scrollY = window.scrollY; });
+
+// --- Resize ---
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// --- Animation loop ---
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // core rotation + breathing
+  core.rotation.x = t * 0.25;
+  core.rotation.y = t * 0.4;
+  const s = 1 + Math.sin(t * 1.5) * 0.04;
+  core.scale.set(s, s, s);
+
+  // shell counter-rotation
+  shell.rotation.x = -t * 0.15;
+  shell.rotation.y = -t * 0.2;
+
+  // particles drift
+  const pos = pGeo.attributes.position.array;
+  for (let i = 0; i < COUNT; i++) {
+    pos[i * 3]     += velocities[i].x;
+    pos[i * 3 + 1] += velocities[i].y;
+    pos[i * 3 + 2] += velocities[i].z;
+    // wrap around
+    for (let a = 0; a < 3; a++) {
+      if (pos[i * 3 + a] > 20) pos[i * 3 + a] = -20;
+      if (pos[i * 3 + a] < -20) pos[i * 3 + a] = 20;
+    }
+  }
+  pGeo.attributes.position.needsUpdate = true;
+
+  // camera reacts to mouse + scroll
+  const targetX = mouse.x * 3;
+  const targetY = mouse.y * 2;
+  camera.position.x += (targetX - camera.position.x) * 0.05;
+  camera.position.y += (targetY - camera.position.y) * 0.05;
+  camera.position.z = 12 + Math.min(scrollY * 0.01, 6);
+  camera.lookAt(0, 0, 0);
+
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+
+</body>
+</html>
